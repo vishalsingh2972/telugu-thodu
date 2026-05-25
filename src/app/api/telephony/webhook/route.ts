@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
 
+/**
+ * POST /api/telephony/webhook
+ * Intercepts the live incoming webhook event dispatched from Twilio's engine 
+ * once the parent answers the phone.
+ */
 export async function POST(request: Request) {
   try {
     // 1. Twilio sends webhook data as URL-encoded form data (application/x-www-form-urlencoded)
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Construct the TwiML XML Response
-    // We use the 'en-IN' language code with the 'Polly.Raveena' or 'Polly.Aditi' neural voice 
+    // We use the 'en-IN' language code with the 'Polly.Raveena' neural voice 
     // to give it a natural, clear Indian accent.
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -69,4 +74,25 @@ export async function POST(request: Request) {
       headers: { 'Content-Type': 'application/xml' },
     });
   }
+}
+
+/**
+ * GET /api/telephony/webhook
+ * Acts as a pre-flight diagnostics endpoint to safely verify browser connectivity,
+ * domain validation, and bypass Ngrok interstitial landing frames.
+ */
+export async function GET() {
+  const testTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Raveena" language="en-IN">
+        Browser verification success. The webhook endpoint is online and reachable.
+    </Say>
+</Response>`.trim();
+
+  return new NextResponse(testTwiml, {
+    headers: { 
+      'Content-Type': 'application/xml',
+      'Cache-Control': 'no-cache',
+    },
+  });
 }
