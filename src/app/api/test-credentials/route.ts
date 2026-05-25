@@ -1,3 +1,5 @@
+//npm run dev http://localhost:3000/api/test-credentials
+
 import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 import { GoogleGenAI } from '@google/genai';
