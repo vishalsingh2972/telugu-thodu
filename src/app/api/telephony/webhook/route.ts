@@ -24,14 +24,13 @@ export async function POST(request: Request) {
     // 2. Fetch the custom checklist configuration we saved in Upstash Redis during Day 2
     const cachedData = await redis.get(`call:${callSid}:config`);
     
-    let checklistQuestion = "Namaste. This is your daily health check in. Please answer the following questions.";
+    // Default fallback question in plain transliterated Telugu just in case
+    let checklistQuestion = "Namaste. Meeku ippudu elaa undi?";
     
     if (cachedData) {
-      // Parse the stored data string back into a JSON object
       const config = typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
       
       if (config.questions && config.questions.length > 0) {
-        // Grab the first question from our custom dashboard array to present to the user
         checklistQuestion = config.questions[0];
       }
       
@@ -40,13 +39,19 @@ export async function POST(request: Request) {
       await redis.set(`call:${callSid}:config`, JSON.stringify(config), { ex: 86400 });
     }
 
-    // 3. Construct the TwiML XML Response
-    // We use the 'en-IN' language code with the 'Polly.Raveena' neural voice 
-    // to give it a natural, clear Indian accent.
+    // 3. Construct the TwiML XML Response using native Google Voice integration handles
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+    <Say voice="Google.te-IN-Standard-A" language="te-IN">
+        నమస్కారం.
+    </Say>
+    <Pause length="1"/>
+    <Say voice="Google.te-IN-Standard-A" language="te-IN">
+        ${checklistQuestion}
+    </Say>
+    <Pause length="1"/>
     <Say voice="Polly.Raveena" language="en-IN">
-        ${checklistQuestion} Please answer after the beep, and press the hash key when you are finished.
+        Please answer after the beep, and press the hash key when you are finished.
     </Say>
     <Record 
         action="${process.env.NEXT_PUBLIC_TUNNEL_URL}/api/telephony/process"
@@ -84,8 +89,8 @@ export async function POST(request: Request) {
 export async function GET() {
   const testTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Raveena" language="en-IN">
-        Browser verification success. The webhook endpoint is online and reachable.
+    <Say voice="Google.te-IN-Standard-A" language="te-IN">
+        నమస్కారం.
     </Say>
 </Response>`.trim();
 
