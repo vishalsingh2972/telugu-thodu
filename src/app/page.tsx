@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
   Phone, 
   CheckCircle2, 
@@ -14,7 +14,10 @@ import {
   ChevronUp,
   HeartPulse,
   SlidersHorizontal,
-  TrendingDown
+  TrendingDown,
+  FileDown,
+  Mail,
+  FileText
 } from "lucide-react";
 
 interface ChecklistItem {
@@ -51,7 +54,6 @@ interface OverviewData {
   timestamp: string;
 }
 
-// Support both chronology settings and all dynamic string-based filters
 type SortOption = "DATE_DESC" | "DATE_ASC" | string;
 
 export default function DashboardPage() {
@@ -62,6 +64,10 @@ export default function DashboardPage() {
   const [expandedCallSid, setExpandedCallSid] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("DATE_DESC");
+  
+  // State to manage the absolute dropdown menu container layout
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const fetchDashboardData = async () => {
     try {
@@ -95,11 +101,64 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Close the export toggle panel automatically if the user clicks anywhere outside the overlay bounds
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const toggleCallExpand = (callSid: string) => {
     setExpandedCallSid(expandedCallSid === callSid ? null : callSid);
   };
 
-  // --- Dynamic Unique Mood Registry Scanner ---
+  const handleDownloadPDF = () => {
+    setShowExportMenu(false);
+    // Let the state engine cycle layout settling before popping print parameters
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
+
+  // Triggers background download execution loop and redirects tab context straight to a pre-composed Gmail compose window
+  const handleEmailReport = () => {
+    setShowExportMenu(false);
+    
+    // 1. Calculate metrics metrics snapshot data block
+    const totalConcerned = calls.filter(c => c.analysis?.overallMood === "CONCERNED").length;
+    const formattedDate = new Date().toLocaleDateString();
+    
+    const subject = `AmmaCare Live Monitoring Handover Report - ${formattedDate}`;
+    
+    const bodyRows = [
+      "AmmaCare Remote Patient Monitoring Handoff Summary Log",
+      "=======================================================",
+      `Report Timestamp: ${new Date().toLocaleString()}`,
+      `Total Logged Check-ins: ${overview?.summary.totalCallsRouted || calls.length}`,
+      `Flagged Discomfort Anomalies (CONCERNED): ${totalConcerned}`,
+      `Compliance Rating: ${overview?.summary.globalComplianceRate || 0}%`,
+      "",
+      "[ACTION REQUIRED]: Please attach the accompanying report PDF file that just downloaded onto your machine before dispatching this message.",
+      "",
+      "Generated securely via AmmaCare Node UI Software Ecosystem."
+    ].join("\n");
+
+    // 2. Build explicit deep link query format directly targeted at Gmail's compose handler interface
+    const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyRows)}`;
+
+    // 3. Fire the native download mechanism first so it seamlessly drops into the doctor's asset manager tray
+    setTimeout(() => {
+      window.print();
+    }, 50);
+
+    // 4. Pivot target intent focus directly over to the dynamic browser tab instantiation matrix
+    window.open(gmailComposeUrl, "_blank", "noopener,noreferrer");
+  };
+
   const dynamicMoodsList = useMemo(() => {
     const moodsSet = new Set<string>();
     calls.forEach(c => {
@@ -110,11 +169,9 @@ export default function DashboardPage() {
     return Array.from(moodsSet);
   }, [calls]);
 
-  // --- Flexible Filter / Sort Processing Engine ---
   const processedCalls = useMemo(() => {
     let result = [...calls];
     
-    // If the selection isn't explicitly standard date configurations, evaluate it as a strict category filter
     if (sortBy !== "DATE_DESC" && sortBy !== "DATE_ASC") {
       result = result.filter(c => c.analysis?.overallMood?.toUpperCase() === sortBy);
     }
@@ -124,12 +181,10 @@ export default function DashboardPage() {
       const timeB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0;
 
       if (sortBy === "DATE_ASC") return timeA - timeB;
-      // Default standard chronological fallback (newest logs first)
       return timeB - timeA;
     });
   }, [calls, sortBy]);
 
-  // --- Analytics Curve Generator Engine ---
   const dynamicChartData = useMemo(() => {
     const dailyMap: Record<string, { total: number; concerned: number }> = {};
     
@@ -166,6 +221,35 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
+      <style jsx global>{`
+        @media print {
+          body {
+            background-color: #fff !important;
+            color: #000 !important;
+            font-size: 12px !important;
+          }
+          header, button, select, .no-print, [role="button"], .export-dropdown-wrapper {
+            display: none !important;
+          }
+          main {
+            padding: 0 !important;
+            max-width: 100% !important;
+          }
+          .print-break-inside-none {
+            page-break-inside: avoid !important;
+          }
+          .clinical-accordion-row {
+            display: table-row !important;
+            background-color: #fafafa !important;
+          }
+          .clinical-accordion-row * {
+            color: #000 !important;
+            background-color: transparent !important;
+            border-color: #e2e8f0 !important;
+          }
+        }
+      `}</style>
+
       {/* --- Header --- */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -179,21 +263,54 @@ export default function DashboardPage() {
             </div>
           </div>
           
-          <button 
-            onClick={fetchDashboardData}
-            disabled={isRefreshing}
-            className="flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-emerald-500" : ""}`} />
-            {isRefreshing ? "Refreshing..." : "Sync Live Data"}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Split Options Action Panel Integration Container */}
+            <div className="relative export-dropdown-wrapper" ref={menuRef}>
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-100 transition active:scale-95"
+              >
+                <FileDown className="w-4 h-4" />
+                <span>Export Report</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showExportMenu ? "rotate-180" : ""}`} />
+              </button>
+
+              {showExportMenu && (
+                <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-50 font-sans text-sm animate-fadeIn">
+                  <button
+                    onClick={handleDownloadPDF}
+                    className="w-full px-4 py-2 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition"
+                  >
+                    <FileText className="w-4 h-4 text-slate-400" />
+                    <span>Download Report PDF</span>
+                  </button>
+                  <button
+                    onClick={handleEmailReport}
+                    className="w-full px-4 py-2 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 border-t border-slate-100 flex items-center gap-2.5 transition"
+                  >
+                    <Mail className="w-4 h-4 text-slate-400" />
+                    <span>Email Summary Log</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={fetchDashboardData}
+              disabled={isRefreshing}
+              className="flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-emerald-500" : ""}`} />
+              {isRefreshing ? "Refreshing..." : "Sync Live"}
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
         {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-3">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-3 no-print">
             <AlertTriangle className="w-5 h-5 flex-shrink-0" />
             <p className="font-medium">{error}</p>
           </div>
@@ -201,14 +318,14 @@ export default function DashboardPage() {
 
         {/* --- Metrics Panel --- */}
         {overview && (
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print-break-inside-none">
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-start justify-between">
               <div className="space-y-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Calls Routed</span>
                 <h3 className="text-3xl font-black text-slate-800">{overview.summary.totalCallsRouted}</h3>
-                <p className="text-xs text-slate-500">Twilio SIP trunk routing attempts</p>
+                <p className="text-xs text-slate-500">Twilio SIP trunk routing</p>
               </div>
-              <div className="bg-blue-50 text-blue-600 p-2.5 rounded-xl">
+              <div className="bg-blue-50 text-blue-600 p-2.5 rounded-xl no-print">
                 <Phone className="w-5 h-5" />
               </div>
             </div>
@@ -217,9 +334,9 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Successful Check-ins</span>
                 <h3 className="text-3xl font-black text-emerald-600">{overview.summary.successfulCheckins}</h3>
-                <p className="text-xs text-slate-500">Completed dynamic AI forms</p>
+                <p className="text-xs text-slate-500">Completed AI medical forms</p>
               </div>
-              <div className="bg-emerald-50 text-emerald-600 p-2.5 rounded-xl">
+              <div className="bg-emerald-50 text-emerald-600 p-2.5 rounded-xl no-print">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
             </div>
@@ -227,12 +344,12 @@ export default function DashboardPage() {
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-start justify-between">
               <div className="space-y-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Critical Escalations</span>
-                <h3 className={`text-3xl font-black ${overview.summary.criticalEscalations > 0 ? "text-amber-600 animate-pulse" : "text-slate-800"}`}>
+                <h3 className={`text-3xl font-black ${overview.summary.criticalEscalations > 0 ? "text-amber-600" : "text-slate-800"}`}>
                   {overview.summary.criticalEscalations}
                 </h3>
-                <p className="text-xs text-slate-500">Urgent WhatsApp alerts pushed</p>
+                <p className="text-xs text-slate-500">Urgent WhatsApp alerts</p>
               </div>
-              <div className={`p-2.5 rounded-xl ${overview.summary.criticalEscalations > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-400"}`}>
+              <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 no-print">
                 <AlertTriangle className="w-5 h-5" />
               </div>
             </div>
@@ -241,9 +358,9 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Compliance Evaluation</span>
                 <h3 className="text-3xl font-black text-slate-800">{overview.summary.globalComplianceRate}%</h3>
-                <p className="text-xs text-slate-500">Protocol verification benchmark</p>
+                <p className="text-xs text-slate-500">Protocol verification marker</p>
               </div>
-              <div className="bg-purple-50 text-purple-600 p-2.5 rounded-xl">
+              <div className="bg-purple-50 text-purple-600 p-2.5 rounded-xl no-print">
                 <ShieldCheck className="w-5 h-5" />
               </div>
             </div>
@@ -251,32 +368,32 @@ export default function DashboardPage() {
         )}
 
         {/* --- Trends Chart Block --- */}
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6 print-break-inside-none">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-red-50 text-red-600 rounded-xl">
+            <div className="p-2 bg-red-50 text-red-600 rounded-xl no-print">
               <TrendingDown className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-800">Critical Distress Volatility Index</h2>
-              <p className="text-xs text-slate-500">Realtime metric tracing percentage of daily check-ins flagged with anomalous patient discomfort indicators</p>
+              <p className="text-xs text-slate-500">Realtime percentage of daily automated check-ins flagged with anomalous patient discomfort indicators</p>
             </div>
           </div>
 
           <div className="grid grid-cols-7 gap-2 pt-4 h-48 items-end border-b border-slate-200 px-2">
             {dynamicChartData.map((dataPoint, index) => (
               <div key={index} className="flex flex-col items-center space-y-2 group h-full justify-end">
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] py-1 px-2 rounded absolute mb-40 shadow-xl pointer-events-none z-10 font-bold space-y-0.5 text-center">
-                  <div>Distress Load: <span className="text-red-400">{dataPoint.ratio}%</span></div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] py-1 px-2 rounded absolute mb-40 shadow-xl pointer-events-none z-10 font-bold space-y-0.5 text-center no-print">
+                  <div>Distress: <span className="text-red-400">{dataPoint.ratio}%</span></div>
                   <div className="text-[9px] font-normal text-slate-400">({dataPoint.concerned}/{dataPoint.total} Calls)</div>
                 </div>
 
                 <div className="w-full bg-slate-100 rounded-t-lg h-full max-h-[140px] flex items-end overflow-hidden">
                   <div 
                     style={{ height: `${Math.max(dataPoint.ratio, dataPoint.total > 0 ? 8 : 0)}%` }} 
-                    className={`w-full transition-all duration-500 rounded-t-md cursor-pointer ${
-                      dataPoint.ratio > 40 ? "bg-red-500 group-hover:bg-red-400" :
-                      dataPoint.ratio > 0 ? "bg-amber-500 group-hover:bg-amber-400" :
-                      "bg-slate-300 group-hover:bg-slate-400"
+                    className={`w-full transition-all duration-500 rounded-t-md ${
+                      dataPoint.ratio > 40 ? "bg-red-500" :
+                      dataPoint.ratio > 0 ? "bg-amber-500" :
+                      "bg-slate-300"
                     }`}
                   />
                 </div>
@@ -284,27 +401,16 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-4 text-[11px] font-bold text-slate-500 px-1">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded bg-red-500" />
-              <span>High Critical Stress Level (&gt;40%)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded bg-amber-500" />
-              <span>Anomalous Conditions Reported</span>
-            </div>
-          </div>
         </section>
 
         {/* --- Log Table Block --- */}
         <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+          <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 no-print">
             <div>
               <h2 className="text-base font-bold text-slate-800">Operational Logging Stream</h2>
-              <p className="text-xs text-slate-500">Chronological ledger of interactive automated patient check-ins</p>
+              <p className="text-xs text-slate-500">Chronological ledger of interactive patient check-ins</p>
             </div>
             
-            {/* Sorting Toolbar Integration */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
                 <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
@@ -315,11 +421,8 @@ export default function DashboardPage() {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="text-xs font-semibold bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer uppercase tracking-wide"
               >
-                {/* Fixed Structural Group */}
                 <option value="DATE_DESC">Date: Newest First</option>
                 <option value="DATE_ASC">Date: Oldest First</option>
-                
-                {/* Dynamic Category Engine Group */}
                 {dynamicMoodsList.map((mood) => (
                   <option key={mood} value={mood}>
                     {mood === "CONCERNED" ? "🚨 " : "• "} Mood: {mood} Only
@@ -340,7 +443,7 @@ export default function DashboardPage() {
                   <th className="py-3 px-6">Operational Status</th>
                   <th className="py-3 px-6">Detected Lang</th>
                   <th className="py-3 px-6">Call Timestamp</th>
-                  <th className="py-3 px-6 text-right">Audit Insights</th>
+                  <th className="py-3 px-6 text-right no-print">Audit Insights</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
@@ -350,68 +453,30 @@ export default function DashboardPage() {
 
                   return (
                     <React.Fragment key={call.callSid}>
-                      <tr className={`transition-colors duration-200 ${
+                      <tr className={`transition-colors duration-200 print-break-inside-none ${
                         isConcerned 
-                          ? "bg-red-50/70 hover:bg-red-100/80 border-l-4 border-l-red-500" 
+                          ? "bg-red-50/70 border-l-4 border-l-red-500" 
                           : isExpanded ? "bg-slate-50" : "hover:bg-slate-50/80"
                       }`}>
                         <td className="py-4 px-6 font-semibold text-slate-700">
-                          <div className="flex items-center gap-2">
-                            {call.phoneNumber}
-                            {isConcerned && (
-                              <span className="flex h-2 w-2 relative">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                              </span>
-                            )}
-                          </div>
+                          {call.phoneNumber}
                         </td>
                         <td className="py-4 px-6">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase border tracking-wide ${
-                            call.status === "COMPLETED" ? (isConcerned ? "bg-red-100 text-red-800 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-100") :
-                            call.status === "IN_PROGRESS" ? "bg-amber-50 text-amber-700 border-amber-100 animate-pulse" :
-                            "bg-blue-50 text-blue-700 border-blue-100"
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              call.status === "COMPLETED" ? (isConcerned ? "bg-red-500" : "bg-emerald-500") :
-                              call.status === "IN_PROGRESS" ? "bg-amber-500" : "bg-blue-500"
-                            }`} />
-                            {call.status}
+                          <span className="text-xs font-bold uppercase">
+                            {call.status} {isConcerned ? "(🚨 CONCERNED)" : ""}
                           </span>
                         </td>
-                        <td className="py-4 px-6">
-                          <span className="inline-flex items-center gap-1 text-xs text-slate-600 font-medium bg-slate-100 px-2 py-0.5 rounded-md">
-                            <Globe2 className="w-3 h-3 text-slate-400" />
-                            {call.languageDetected}
-                          </span>
+                        <td className="py-4 px-6 text-xs text-slate-600 font-medium">
+                          {call.languageDetected}
                         </td>
-                        <td className="py-4 px-6 text-xs text-slate-500 space-y-0.5">
-                          {call.scheduledAt && !isNaN(Date.parse(call.scheduledAt)) ? (
-                            <>
-                              <div className="flex items-center gap-1 font-medium text-slate-700">
-                                <Clock className="w-3 h-3 text-slate-400" />
-                                <span>{new Date(call.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                {new Date(call.scheduledAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                              </div>
-                            </>
-                          ) : (
-                            <div className="flex items-center gap-1 text-slate-400 italic font-normal">
-                              <Clock className="w-3 h-3 text-slate-300" />
-                              <span>Connecting...</span>
-                            </div>
-                          )}
+                        <td className="py-4 px-6 text-xs text-slate-500">
+                          {call.scheduledAt ? new Date(call.scheduledAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "Pending"}
                         </td>
-                        <td className="py-4 px-6 text-right">
+                        <td className="py-4 px-6 text-right no-print">
                           <button
                             onClick={() => toggleCallExpand(call.callSid)}
                             className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition ${
-                              isExpanded 
-                                ? "bg-slate-800 border-slate-800 text-white shadow-sm" 
-                                : isConcerned
-                                  ? "bg-white hover:bg-red-200 border-red-300 text-red-700 shadow-sm shadow-red-50"
-                                  : "bg-white hover:bg-slate-100 border-slate-200 text-slate-600"
+                              isExpanded ? "bg-slate-800 border-slate-800 text-white" : "bg-white text-slate-600"
                             }`}
                           >
                             <span>Review</span>
@@ -420,103 +485,46 @@ export default function DashboardPage() {
                         </td>
                       </tr>
 
-                      {/* --- INLINE EXPANSION ACCORDION BLOCK --- */}
-                      {isExpanded && (
-                        <tr>
-                          <td colSpan={5} className="bg-slate-900 text-white p-6 border-b border-slate-800">
-                            <div className="space-y-6 animate-fadeIn">
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded uppercase border border-emerald-900 tracking-wider">
-                                      Active Inspection Node
-                                    </span>
-                                    <span className="text-xs font-mono text-slate-400">UUID Ref: {call.callSid}</span>
-                                  </div>
-                                  <h3 className="text-base font-black text-white">Clinical Breakdown Ledger</h3>
-                                </div>
-                                
-                                <span className={`self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase border ${
-                                  call.analysis?.overallMood === "CONCERNED" 
-                                    ? "bg-red-950 text-red-400 border-red-900 animate-pulse" 
-                                    : "bg-emerald-950 text-emerald-400 border-emerald-900"
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${call.analysis?.overallMood === "CONCERNED" ? "bg-red-500" : "bg-emerald-500"}`} />
-                                  Mood Status: {call.analysis?.overallMood || "PENDING_CALL_END"}
+                      {/* --- ACCORDION BREAKDOWN BOX --- */}
+                      {(isExpanded || true) && (
+                        <tr className={`clinical-accordion-row ${isExpanded ? "" : "hidden"}`}>
+                          <td colSpan={5} className="bg-slate-900 text-white p-6 border-b border-slate-800 print-break-inside-none">
+                            <div className="space-y-4">
+                              <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                                <span className="text-xs font-mono text-slate-400">Log UID: {call.callSid}</span>
+                                <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                                  Patient Assessment Profile ({call.analysis?.overallMood || "N/A"})
                                 </span>
                               </div>
 
                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {/* Left Side Box */}
-                                <div className="space-y-4">
-                                  <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                      <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
-                                      Sarvam ASR Decoded Translation (English)
-                                    </label>
-                                    <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm leading-relaxed text-slate-200 font-medium min-h-[80px]">
-                                      {call.rawTranscript || (
-                                        <span className="text-slate-500 italic">No audio narrative streams captured for this transaction index yet.</span>
-                                      )}
-                                    </div>
+                                <div className="space-y-3">
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Decoded Transcript Translation</span>
+                                    <p className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs leading-relaxed text-slate-200">
+                                      {call.rawTranscript || "No streaming transcript files captured."}
+                                    </p>
                                   </div>
-
-                                  <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                      <HeartPulse className="w-3.5 h-3.5 text-emerald-500" />
-                                      Gemini Executive Medical Abstract
-                                    </label>
-                                    <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm leading-relaxed text-emerald-100/90 font-medium min-h-[80px]">
-                                      {call.analysis?.summary || (
-                                        <span className="text-slate-500 italic">Waiting for medical report generation parameters...</span>
-                                      )}
-                                    </div>
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Clinical AI Executive Summary</span>
+                                    <p className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs leading-relaxed text-emerald-100">
+                                      {call.analysis?.summary || "Waiting for diagnostic engine configuration parameters."}
+                                    </p>
                                   </div>
                                 </div>
 
-                                {/* Right Side Box */}
-                                <div className="space-y-4">
-                                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-                                    Target Protocol Checklist Parameters Mapping
-                                  </label>
-                                  
-                                  {call.analysis && call.analysis.checklist.length > 0 ? (
-                                    <div className="space-y-3">
-                                      {call.analysis.checklist.map((item, idx) => (
-                                        <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
-                                          <div className="flex items-center justify-between gap-4 border-b border-slate-900 pb-2">
-                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Protocol Metric Question</span>
-                                            <span className={`text-xs font-black px-2 py-0.5 rounded uppercase tracking-wide border ${
-                                              item.status === "YES" 
-                                                ? "bg-emerald-950 text-emerald-400 border-emerald-900" 
-                                                : "bg-amber-950 text-amber-400 border-amber-900"
-                                            }`}>
-                                              Value: {item.status}
-                                            </span>
-                                          </div>
-
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                                            <div className="space-y-1">
-                                              <span className="text-slate-500 font-bold uppercase tracking-wide text-[10px]">Original Scripted Telugu Question</span>
-                                              <p className="text-slate-300 font-medium bg-slate-900/50 p-2 rounded-lg border border-slate-800/60 leading-relaxed">
-                                                {item.originalQuestion}
-                                              </p>
-                                            </div>
-                                            <div className="space-y-1">
-                                              <span className="text-slate-500 font-bold uppercase tracking-wide text-[10px]">Extracted Context Details</span>
-                                              <p className="text-emerald-100/80 font-medium bg-slate-900/50 p-2 rounded-lg border border-slate-800/60 leading-relaxed">
-                                                {item.extractedDetails}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
+                                <div className="space-y-2">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Protocol Verification Flags Matrix</span>
+                                  {call.analysis?.checklist.map((item, idx) => (
+                                    <div key={idx} className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs space-y-1">
+                                      <div className="flex justify-between font-bold border-b border-slate-900 pb-1 text-[11px]">
+                                        <span className="text-slate-400">Metric Checkpoint</span>
+                                        <span className="text-emerald-400">Value: {item.status}</span>
+                                      </div>
+                                      <p className="text-slate-300 italic">Q: {item.originalQuestion}</p>
+                                      <p className="text-slate-400"><strong className="text-slate-500">Context:</strong> {item.extractedDetails}</p>
                                     </div>
-                                  ) : (
-                                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-8 text-center text-sm text-slate-500 italic">
-                                      No structural parameters extracted for this telephony index. Call may still be processing.
-                                    </div>
-                                  )}
+                                  ))}
                                 </div>
                               </div>
                             </div>
