@@ -124,7 +124,7 @@ export async function POST(request: Request) {
       // -------------------------------------
     }
 
-    // 6. Build the final TwiML instructions to gracefully conclude the call session
+    // 6. Build the final TwiML instructions to gracefully conclude the call session - message that is read on the call in the end
     const finalTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say voice="Polly.Raveena" language="en-IN">
